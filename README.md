@@ -33,7 +33,7 @@
 在您的服务器上，以 `root` 用户或拥有 `sudo` 权限的用户执行以下命令：
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Loopsisu/SSH-Notification/main/install.sh | sudo bash
+curl -sSL -o install.sh https://raw.githubusercontent.com/Loopsisu/SSH-Notification/main/install.sh && chmod +x install.sh && sudo ./install.sh
 ```
 
 > **注意**: 请将 `你的用户名/你的仓库名` 替换为您自己的 GitHub 地址。
