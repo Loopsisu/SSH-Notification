@@ -51,6 +51,9 @@ cat > "$NOTIFY_SCRIPT_PATH" << 'EOF'
 #!/bin/bash
 # Bark SSH 登录通知脚本 (POST JSON)
 
+# —— 全局时区设置 —— 
+export TZ=Asia/Shanghai
+
 # 参数
 KEY="$1"
 URL="$2"
