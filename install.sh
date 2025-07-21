@@ -61,16 +61,15 @@ IP="${PAM_RHOST_IP:-${PAM_RHOST:-unknown}}"
 HOST="$(hostname)"
 TIME="$(date '+%Y-%m-%d %H:%M:%S')"
 
-TITLE="SSH 登录：${USER}@${HOST}"
-BODY="来源：${IP}  时间：${TIME}"
-
-# 构造 JSON
+# —— 构造 JSON Payload —— 
 read -r -d '' PAYLOAD <<JSON
 {
-  "title":  "$(echo "$TITLE" | sed 's/"/\\"/g')",
-  "body":   "$(echo "$BODY"  | sed 's/"/\\"/g')"
+  "title":    "✅ SSH 登录成功",
+  "subtitle": "${USER}@${HOST}",
+  "body":     "Source IP: ${IP}\\nLogin Date: ${TIME}"
 }
 JSON
+
 
 # 发送 POST 请求
 curl -s -X POST "${URL}${KEY}" \
