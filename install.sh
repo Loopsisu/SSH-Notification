@@ -1,109 +1,97 @@
 #!/bin/bash
 # ==============================================================================
 # SSH Login Notifier for Bark - Installation Script (Self-Cleaning & Idempotent)
-# Author: Your Name
-# GitHub: https://github.com/your-username/your-repo
+# Author: Loopsisu
+# GitHub: https://github.com/Loopsisu/SSH-Notification
 # Description: 安装/更新后，每次 SSH 登录都会推送 Bark 通知。
 # ==============================================================================
 
 # --- 颜色定义 ---
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m'  # No Color
+#!/bin/bash
+# ==============================================================================
+# SSH Login Notifier for Bark - 安装/更新脚本（POST JSON 格式）
+# ==============================================================================
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
-# --- 脚本变量 ---
 NOTIFY_SCRIPT_PATH="/usr/local/bin/ssh_login_notify.sh"
 PAM_SSHD_CONFIG="/etc/pam.d/sshd"
 BACKUP_SUFFIX=".bak-$(date +%Y%m%d%H%M%S)"
 
-# 1. 权限检查
-if [ "$(id -u)" -ne 0 ]; then
-  echo -e "${RED}错误：此脚本必须以 root 用户权限运行。${NC}"
-  echo -e "请尝试：${YELLOW}sudo ./install.sh${NC}"
-  exit 1
-fi
-
-# 2. 依赖检查
+# 1. 权限 & 依赖检查
+[ "$(id -u)" -ne 0 ] && echo -e "${RED}请以 root 运行脚本${NC}" && exit 1
 for cmd in curl python3; do
-  if ! command -v $cmd &> /dev/null; then
-    echo -e "${RED}错误：依赖 '$cmd' 未安装。${NC}"
-    exit 1
-  fi
+  command -v $cmd &>/dev/null || { echo -e "${RED}缺少依赖：$cmd${NC}"; exit 1; }
 done
 
-# 3. 交互式输入
-echo -e "${GREEN}=== SSH 登录 Bark 推送通知 安装程序 ===${NC}"
-read -p "请输入您的 Bark Key (例如: abcdefg123456): " BARK_KEY
-[ -z "$BARK_KEY" ] && { echo -e "${RED}错误：Bark Key 不能为空。${NC}"; exit 1; }
-
-read -p "请输入您的 Bark 服务器 URL [留空则使用官方]: " BARK_URL
+# 2. 交互输入
+echo -e "${GREEN}=== SSH 登录 Bark 通知 安装程序 ===${NC}"
+read -p "请输入 Bark Key: " BARK_KEY
+[ -z "$BARK_KEY" ] && echo -e "${RED}Key 不能为空${NC}" && exit 1
+read -p "请输入 Bark 服务器 URL [回车使用官方]: " BARK_URL
 if [ -z "$BARK_URL" ]; then
   BARK_URL="https://api.day.app/"
-  echo -e "${YELLOW}使用官方 Bark 服务器: ${NC}${BARK_URL}"
+  echo -e "${YELLOW}使用官方服务器：${BARK_URL}${NC}"
 else
   [[ "$BARK_URL" != */ ]] && BARK_URL="${BARK_URL}/"
-  echo -e "${GREEN}使用私有 Bark 服务器: ${NC}${BARK_URL}"
+  echo -e "${YELLOW}使用私有服务器：${BARK_URL}${NC}"
 fi
 echo ""
 
-# 4. 清理旧安装
-echo -e "${YELLOW}>> 清理旧的通知脚本与 PAM 配置...${NC}"
-[ -f "$NOTIFY_SCRIPT_PATH" ] && rm -f "$NOTIFY_SCRIPT_PATH" && echo "已删除：${NOTIFY_SCRIPT_PATH}"
-if [ -f "$PAM_SSHD_CONFIG" ]; then
-  cp "$PAM_SSHD_CONFIG" "${PAM_SSHD_CONFIG}${BACKUP_SUFFIX}"
-  echo "已备份 PAM 配置：${PAM_SSHD_CONFIG}${BACKUP_SUFFIX}"
-  # 删除旧的 pam_exec 调用
-  sed -i '\|ssh_login_notify.sh|d' "$PAM_SSHD_CONFIG"
-  echo "已移除旧的 PAM 条目"
-fi
+# 3. 清理旧文件 & 备份 PAM
+echo -e "${YELLOW}>> 清理旧安装...${NC}"
+[ -f "$NOTIFY_SCRIPT_PATH" ] && rm -f "$NOTIFY_SCRIPT_PATH" && echo "已删除旧脚本"
+cp "$PAM_SSHD_CONFIG" "${PAM_SSHD_CONFIG}${BACKUP_SUFFIX}"
+sed -i '\|ssh_login_notify.sh|d' "$PAM_SSHD_CONFIG"
+echo "已备份并清理 PAM 配置(${BACKUP_SUFFIX})"
 echo ""
 
-# 5. 创建推送脚本
-echo -e "${YELLOW}>> 写入新的通知脚本...${NC}"
+# 4. 写入新通知脚本
+echo -e "${YELLOW}>> 创建 /usr/local/bin/ssh_login_notify.sh ...${NC}"
 cat > "$NOTIFY_SCRIPT_PATH" << 'EOF'
 #!/bin/bash
-# Bark SSH 登录通知脚本
+# Bark SSH 登录通知脚本 (POST JSON)
 
-BARK_KEY="$1"
-BARK_URL="$2"
+# 参数
+KEY="$1"
+URL="$2"
 
-USER="$PAM_USER"
-IP="$PAM_RHOST"
-HOSTNAME="$(hostname)"
-TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
+# 获取 PAM 环境
+USER="${PAM_USER:-$(whoami)}"
+IP="${PAM_RHOST_IP:-${PAM_RHOST:-unknown}}"
+HOST="$(hostname)"
+TIME="$(date '+%Y-%m-%d %H:%M:%S')"
 
-TITLE="SSH 登录: ${USER}@${HOSTNAME}"
-MESSAGE="来源：${IP}  时间：${TIMESTAMP}"
+TITLE="SSH 登录：${USER}@${HOST}"
+BODY="来源：${IP}  时间：${TIME}"
 
-urlencode() {
-  python3 - <<PYCODE
-import sys, urllib.parse
-print(urllib.parse.quote(sys.argv[1]))
-PYCODE
+# 构造 JSON
+read -r -d '' PAYLOAD <<JSON
+{
+  "title":  "$(echo "$TITLE" | sed 's/"/\\"/g')",
+  "body":   "$(echo "$BODY"  | sed 's/"/\\"/g')"
 }
+JSON
 
-TITLE_ENC=$(urlencode "$TITLE")
-MSG_ENC=$(urlencode "$MESSAGE")
-
-curl -s "${BARK_URL}${BARK_KEY}/${TITLE_ENC}/${MSG_ENC}" > /dev/null
+# 发送 POST 请求
+curl -s -X POST "${URL}${KEY}" \
+     -H 'Content-Type: application/json; charset=utf-8' \
+     -d "${PAYLOAD}" > /dev/null
 EOF
 
 chmod +x "$NOTIFY_SCRIPT_PATH"
-echo "已创建并赋予执行权限：${NOTIFY_SCRIPT_PATH}"
+echo "脚本已创建并赋予执行权限"
 echo ""
 
-# 6. 更新 PAM 配置
-echo -e "${YELLOW}>> 添加 pam_exec.so 到 PAM 配置...${NC}"
+# 5. 更新 PAM 配置
+echo -e "${YELLOW}>> 更新 PAM: 添加 pam_exec.so ...${NC}"
 cat >> "$PAM_SSHD_CONFIG" << EOF
 
 # —— SSH 登录 Bark 通知 —— 
-session optional pam_exec.so /usr/local/bin/ssh_login_notify.sh ${BARK_KEY} ${BARK_URL}
+session optional pam_exec.so ${NOTIFY_SCRIPT_PATH} ${BARK_KEY} ${BARK_URL}
 EOF
-echo "PAM 配置已更新：${PAM_SSHD_CONFIG}"
+echo "PAM 配置已更新"
 echo ""
 
-# 7. 完成提示
-echo -e "${GREEN}🎉 安装/更新完成！${NC}"
-echo -e "请执行 ${YELLOW}systemctl restart sshd${NC} 以使更改生效。"
-echo -e "下一次 SSH 登录时，您将收到 Bark 通知。"
+# 6. 完成
+echo -e "${GREEN}🎉 安装完成！${NC}"
+echo -e "请执行 ${YELLOW}systemctl restart sshd${NC} 以使配置生效。"
