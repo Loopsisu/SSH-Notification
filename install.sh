@@ -69,7 +69,7 @@ read -r -d '' PAYLOAD <<JSON
 {
   "title":    "✅ SSH 登录成功",
   "subtitle": "${USER}@${HOST}",
-  "body":     "Source IP: ${IP}\\nLogin Date: ${TIME}"
+  "body":     "Source IP: ${IP}\\nLogin Date: ${TIME}",
   "icon":     "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/terminal.png"
 }
 JSON
